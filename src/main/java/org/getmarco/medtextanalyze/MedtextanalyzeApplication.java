@@ -7,6 +7,8 @@ import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.comprehendmedical.AWSComprehendMedical;
 import com.amazonaws.services.comprehendmedical.AWSComprehendMedicalClient;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.textract.AmazonTextract;
 import com.amazonaws.services.textract.AmazonTextractClientBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,5 +65,27 @@ public class MedtextanalyzeApplication {
         }
 
         return AmazonTextractClientBuilder.standard().withRegion(region).build();
+    }
+
+    /**
+     * Adds an AWS S3 client to the {@link org.springframework.context.ApplicationContext ApplicationContext}.
+     *
+     * @return the aws S3 client
+     */
+    @Bean
+    public AmazonS3 s3Client() {
+        String region = config.getRegion();
+        if (!StringUtils.hasText(region)) {
+            throw new IllegalStateException("missing aws region");
+        }
+        String accessKeyId = config.getAccessKeyId();
+        String secretAccessKey = config.getSecretAccessKey();
+        if (StringUtils.hasText(accessKeyId) && StringUtils.hasText(secretAccessKey)) {
+            AWSCredentials credentials = new BasicAWSCredentials(accessKeyId, secretAccessKey);
+            return AmazonS3ClientBuilder.standard().withCredentials(new AWSStaticCredentialsProvider(credentials))
+              .withRegion(region).build();
+        }
+
+        return AmazonS3ClientBuilder.standard().withRegion(region).build();
     }
 }
