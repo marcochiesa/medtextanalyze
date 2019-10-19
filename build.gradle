@@ -16,10 +16,12 @@ configurations {
 
 repositories {
 	mavenCentral()
+	maven { url "https://repo.spring.io/snapshot" }
 }
 
 ext {
-	set('springCloudVersion', "Greenwich.SR3")
+	//set('springCloudVersion', "Hoxton.M3")
+	springCloudFunctionVersion = "3.0.0.BUILD-SNAPSHOT"
 }
 
 dependencies {
@@ -36,6 +38,7 @@ dependencies {
 
 dependencyManagement {
 	imports {
-		mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+		//mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+		mavenBom "org.springframework.cloud:spring-cloud-function-dependencies:${springCloudFunctionVersion}"
 	}
 }
