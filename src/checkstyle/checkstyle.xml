@@ -43,7 +43,7 @@
 
         <property name="basedir" value="${basedir}"/>
     -->
-    <property name="severity" value="error"/>
+    <property name="severity" value="warning"/>
 
     <property name="fileExtensions" value="java, properties, xml"/>
 
@@ -70,6 +70,8 @@
     <module name="FileLength"/>
     <module name="LineLength">
       <property name="fileExtensions" value="java"/>
+      <property name="max" value="120"/>
+      <property name="ignorePattern" value="^package.*|^import.*|a href|href|http://|https://|ftp://"/>
     </module>
 
     <!-- Checks for whitespace                               -->
@@ -99,7 +101,10 @@
         <module name="InvalidJavadocPosition"/>
         <module name="JavadocMethod"/>
         <module name="JavadocType"/>
-        <module name="JavadocVariable"/>
+        <module name="JavadocVariable">
+            <property name="scope" value="public"/>
+            <property name="ignoreNamePattern" value="log|logger"/>
+        </module>
         <module name="JavadocStyle"/>
         <module name="MissingJavadocMethod"/>
 

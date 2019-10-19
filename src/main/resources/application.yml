@@ -1,0 +1,4 @@
+analyzer:
+  access-key-id: AKIAfoo
+  secret-access-key: bar
+  region: us-east-1
