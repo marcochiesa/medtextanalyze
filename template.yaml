@@ -1,0 +1,133 @@
+AWSTemplateFormatVersion : '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: |
+  Textract and Comprehend Medical demo using AWS API Gateway/Lambda
+Resources:
+  UploadUrl:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: org.getmarco.medtextanalyze.functions.SignedUrlForUpload
+      Runtime: java8
+      Timeout: 300
+      MemorySize: 1024
+      CodeUri: ./build/distributions/medtextanalyze-0.0.1.zip
+      Environment:
+        Variables:
+          MED_UPLOAD_BUCKET: !Ref UploadBucket
+          MED_AWS_REGION: us-east-1
+      Events:
+        UploadUrlGet:
+          Type: Api
+          Properties:
+            Path: /uploadurl
+            Method: get
+        UploadUrlOptions:
+          Type: Api
+          Properties:
+            Path: /uploadurl
+            Method: options
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AmazonS3FullAccess
+      Tags:
+        Name: uploadurl
+        Application: medtextanalyze
+  ImageText:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: org.getmarco.medtextanalyze.functions.TextFromImage
+      Runtime: java8
+      Timeout: 300
+      MemorySize: 1024
+      CodeUri: ./build/distributions/medtextanalyze-0.0.1.zip
+      Environment:
+        Variables:
+          MED_UPLOAD_BUCKET: !Ref UploadBucket
+          MED_AWS_REGION: us-east-1
+      Events:
+        ImageTextPost:
+          Type: Api
+          Properties:
+            Path: /imagetext
+            Method: post
+        ImageTextOptions:
+          Type: Api
+          Properties:
+            Path: /imagetext
+            Method: options
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AmazonS3ReadOnlyAccess
+        - AmazonTextractFullAccess
+      Tags:
+        Name: imagetext
+        Application: medtextanalyze
+  TextEntities:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: org.getmarco.medtextanalyze.functions.EntitiesFromText
+      Runtime: java8
+      Timeout: 300
+      MemorySize: 1024
+      CodeUri: ./build/distributions/medtextanalyze-0.0.1.zip
+      Environment:
+        Variables:
+          MED_UPLOAD_BUCKET: !Ref UploadBucket
+          MED_AWS_REGION: us-east-1
+      Events:
+        TextEntitiesPost:
+          Type: Api
+          Properties:
+            Path: /textentities
+            Method: post
+        TextEntitiesOptions:
+          Type: Api
+          Properties:
+            Path: /textentities
+            Method: options
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AmazonS3ReadOnlyAccess
+        - ComprehendFullAccess
+        - ComprehendMedicalFullAccess
+      Tags:
+        Name: textentities
+        Application: medtextanalyze
+  UploadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteContentAfter1Day
+            Prefix: ''
+            Status: Enabled
+            ExpirationInDays: 1
+          - Id: CleanupMultipartUploads
+            Prefix: ''
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
+Outputs:
+  UploadUrl:
+    Description: "Lambda function ARN for Upload Url"
+    Value: !GetAtt UploadUrl.Arn
+  UploadUrlApi:
+    Description: "API Gateway endpoint URL for signed upload url for bucket"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/uploadurl"
+  ImageText:
+    Description: "Lambda function ARN for Image Text"
+    Value: !GetAtt ImageText.Arn
+  ImageTextApi:
+    Description: "API Gateway endpoint URL for getting text from an image"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/imagetext"
+  TextEntities:
+    Description: "Lambda function ARN for Text Entities"
+    Value: !GetAtt ImageText.Arn
+  TextEntitiesApi:
+    Description: "API Gateway endpoint URL for getting entities from text"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/textentities"
+  UploadBucket:
+    Description: "S3 bucket used to store uploaded files for processing"
+    Value: !Ref UploadBucket
