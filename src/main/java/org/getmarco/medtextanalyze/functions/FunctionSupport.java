@@ -154,7 +154,7 @@ public abstract class FunctionSupport implements RequestHandler<ProxyRequest, Pr
               .build();
             return response;
         } catch (Exception e) {
-            return getError("error - " + e.getMessage());
+            throw new RuntimeException(e);
         }
     }
 

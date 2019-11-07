@@ -9,7 +9,12 @@ import com.amazonaws.services.textract.model.Block;
 import com.amazonaws.services.textract.model.DetectDocumentTextRequest;
 import com.amazonaws.services.textract.model.DetectDocumentTextResult;
 import com.amazonaws.services.textract.model.Document;
+import com.amazonaws.services.textract.model.DocumentLocation;
+import com.amazonaws.services.textract.model.GetDocumentTextDetectionRequest;
+import com.amazonaws.services.textract.model.GetDocumentTextDetectionResult;
 import com.amazonaws.services.textract.model.S3Object;
+import com.amazonaws.services.textract.model.StartDocumentTextDetectionRequest;
+import com.amazonaws.services.textract.model.StartDocumentTextDetectionResult;
 import com.amazonaws.util.IOUtils;
 
 import java.awt.image.BufferedImage;
@@ -21,6 +26,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -34,6 +40,8 @@ import org.apache.pdfbox.tools.imageio.ImageIOUtil;
 
 public final class Analyzer {
     private static final int IMAGE_RESOLUTION_DPI = 300;
+    private static final int TEXT_DETECTION_MAX_RESULTS = 1000;
+    private static final int TEXT_DETECTION_MAX_WAIT = 10;
 
     @Getter
     @Setter
@@ -59,7 +67,6 @@ public final class Analyzer {
      * @param bucket the S3 bucket
      * @param name the S3 object key
      * @return text contents detected in the image
-     * @throws IOException if the file cannot be opened or read from
      */
     public String detectTextImageS3(final String bucket, final String name) {
         S3Object s3Object = new S3Object().withBucket(bucket).withName(name);
@@ -94,7 +101,7 @@ public final class Analyzer {
      * @param filename the local file path for the PDF file
      * @return text contents detected in the PDF
      */
-    public String detectTextPDF(final String filename) {
+    public String detectTextPdf(final String filename) {
         BufferedImage bim = null;
         ByteArrayOutputStream byteArrayOutputStream = null;
         ByteBuffer imageBytes = null;
@@ -113,6 +120,74 @@ public final class Analyzer {
             }
         } catch (IOException e) {
             // to-do
+        }
+        return s.toString();
+    }
+
+    /**
+     * Use the AWS Textract detect document text API to process a PDF stored in S3.
+     * @param bucket the S3 bucket
+     * @param name the S3 object key
+     * @return text contents detected in the image
+     */
+    public String detectTextPdf2(final String bucket, final String name) {
+        String jobId = startTextDetection(bucket, name);
+        try {
+            String jobStatus = waitForTextDetection(jobId);
+        } catch (InterruptedException e) {
+            return "error - text processing was interrupted";
+        }
+        String result = getDetectedText(jobId);
+        return result;
+    }
+
+    private String waitForTextDetection(final String jobId) throws InterruptedException {
+        String jobStatus = "IN_PROGRESS";
+        while (jobStatus.equals("IN_PROGRESS")) {
+            TimeUnit.SECONDS.sleep(TEXT_DETECTION_MAX_WAIT);
+            GetDocumentTextDetectionRequest documentTextDetectionRequest =
+              new GetDocumentTextDetectionRequest().withJobId(jobId).withMaxResults(1);
+            GetDocumentTextDetectionResult response =
+              textractClient.getDocumentTextDetection(documentTextDetectionRequest);
+            jobStatus = response.getJobStatus();
+        }
+        return jobStatus;
+    }
+
+    private String startTextDetection(final String bucket, final String name) {
+        StartDocumentTextDetectionRequest req = new StartDocumentTextDetectionRequest()
+          .withDocumentLocation(new DocumentLocation()
+            .withS3Object(new S3Object()
+              .withBucket(bucket)
+              .withName(name)))
+          .withJobTag("DetectingText");
+        StartDocumentTextDetectionResult startDocumentTextDetectionResult =
+          textractClient.startDocumentTextDetection(req);
+        String startJobId = startDocumentTextDetectionResult.getJobId();
+        return startJobId;
+    }
+
+    private String getDetectedText(final String jobId) {
+        String paginationToken = null;
+        StringBuilder s = new StringBuilder();
+        while (true) {
+            GetDocumentTextDetectionRequest request = new GetDocumentTextDetectionRequest()
+              .withJobId(jobId)
+              .withMaxResults(TEXT_DETECTION_MAX_RESULTS)
+              .withNextToken(paginationToken);
+            GetDocumentTextDetectionResult response = textractClient.getDocumentTextDetection(request);
+
+            for (Block block : response.getBlocks()) {
+                if (block.getBlockType().equals("PAGE")) {
+                    s.append("\n");
+                } else if (block.getBlockType().equals("LINE")) {
+                    s.append(block.getText()).append("\n");
+                }
+            }
+
+            paginationToken = response.getNextToken();
+            if (paginationToken == null)
+                break;
         }
         return s.toString();
     }

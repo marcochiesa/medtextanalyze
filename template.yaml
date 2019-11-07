@@ -63,6 +63,36 @@ Resources:
       Tags:
         Name: imagetext
         Application: medtextanalyze
+  PdfText:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: org.getmarco.medtextanalyze.functions.TextFromPdf
+      Runtime: java8
+      Timeout: 300
+      MemorySize: 1024
+      CodeUri: ./build/distributions/medtextanalyze-0.0.1.zip
+      Environment:
+        Variables:
+          MED_UPLOAD_BUCKET: !Ref UploadBucket
+          MED_AWS_REGION: us-east-1
+      Events:
+        PdfTextPost:
+          Type: Api
+          Properties:
+            Path: /pdftext
+            Method: post
+        PdfTextOptions:
+          Type: Api
+          Properties:
+            Path: /pdftext
+            Method: options
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AmazonS3ReadOnlyAccess
+        - AmazonTextractFullAccess
+      Tags:
+        Name: pdftext
+        Application: medtextanalyze
   TextEntities:
     Type: AWS::Serverless::Function
     Properties:
@@ -122,6 +152,12 @@ Outputs:
   ImageTextApi:
     Description: "API Gateway endpoint URL for getting text from an image"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/imagetext"
+  PdfText:
+    Description: "Lambda function ARN for Pdf Text"
+    Value: !GetAtt PdfText.Arn
+  PdfTextApi:
+    Description: "API Gateway endpoint URL for getting text from a pdf"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/pdftext"
   TextEntities:
     Description: "Lambda function ARN for Text Entities"
     Value: !GetAtt ImageText.Arn

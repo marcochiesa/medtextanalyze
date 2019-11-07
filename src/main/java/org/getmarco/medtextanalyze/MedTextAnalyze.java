@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import lombok.extern.apachecommons.CommonsLog;
 
@@ -21,6 +23,7 @@ import org.apache.http.util.EntityUtils;
 import org.getmarco.medtextanalyze.functions.EntitiesFromText;
 import org.getmarco.medtextanalyze.functions.SignedUrlForUpload;
 import org.getmarco.medtextanalyze.functions.TextFromImage;
+import org.getmarco.medtextanalyze.functions.TextFromPdf;
 
 @CommonsLog
 public class MedTextAnalyze {
@@ -30,6 +33,7 @@ public class MedTextAnalyze {
     private static final String API_ENDPOINT = "https://" + API_HOST + "/Prod/";
     private static final String UPLOAD_URL = API_ENDPOINT + "uploadurl";
     private static final String IMAGE_TEXT = API_ENDPOINT + "imagetext";
+    private static final String PDF_TEXT = API_ENDPOINT + "pdftext";
     private static final String TEXT_ENTITIES = API_ENDPOINT + "textentities";
 
     private final ObjectMapper mapper;
@@ -50,6 +54,54 @@ public class MedTextAnalyze {
      * @throws Exception for any network or response parsing errors
      */
     public void submitImageAndAnalyze(final File imageFile) throws Exception {
+        SignedUrlForUpload.Output uploadInfo = uploadFile(imageFile);
+
+        // Get text contained in the image
+        TextFromImage.Output textFromImageOutput = pullTextFromImage(uploadInfo.getBucket(), uploadInfo.getKey());
+        log.info("image text: " + textFromImageOutput.getText().replaceAll("\\n", " "));
+
+        // Get entities for text
+        EntitiesFromText.Output entitiesFromTextOutput = findTextEntities(textFromImageOutput.getText());
+        log.info("entities: " + entitiesFromTextOutput.getText());
+    }
+
+    /**
+     * Run sample process to upload a PDF, detect text from it, and extract medical domain entities from the
+     * text.
+     * @param pdfFile the image to analyze
+     * @throws Exception for any network or response parsing errors
+     */
+    public void submitPdfAndAnalyze(final File pdfFile) throws Exception {
+        SignedUrlForUpload.Output uploadInfo = uploadFile(pdfFile);
+
+        // Get text contained in the image
+        TextFromPdf.Output textFromPdfOutput = pullTextFromPdf(uploadInfo.getBucket(), uploadInfo.getKey());
+        log.info("pdf text: " + textFromPdfOutput.getText().replaceAll("\\n", " "));
+
+        // Get entities for text
+        EntitiesFromText.Output entitiesFromTextOutput = findTextEntities(textFromPdfOutput.getText());
+        log.info("entities: " + entitiesFromTextOutput.getText());
+    }
+
+    /**
+     * Run sample process to upload a PDF, detect text from it, and get a regex match.
+     * @param pdfFile the image to analyze
+     * @param pattern regex pattern to match with
+     * @throws Exception for any network or response parsing errors
+     * @return matcher on the detected text
+     */
+    public Matcher submitPdfAndMatchText(final File pdfFile, final Pattern pattern) throws Exception {
+        SignedUrlForUpload.Output uploadInfo = uploadFile(pdfFile);
+
+        // Get text contained in the image
+        TextFromPdf.Output textFromPdfOutput = pullTextFromPdf(uploadInfo.getBucket(), uploadInfo.getKey());
+        log.info("pdf text: " + textFromPdfOutput.getText().replaceAll("\\n", " "));
+
+        Matcher matcher = pattern.matcher(textFromPdfOutput.getText());
+        return matcher;
+    }
+
+    private SignedUrlForUpload.Output uploadFile(final File imageFile) throws Exception {
         // Get a pre-signed upload URL
         SignedUrlForUpload.Output uploadUrlOutput = getUploadUrl();
         String bucket = uploadUrlOutput.getBucket();
@@ -58,16 +110,10 @@ public class MedTextAnalyze {
         log.info(String.format("upload bucket: %s, key: %s, link: %s", bucket, key, uploadUrl));
 
         // Upload a sample image to S3
-        HttpResponse uploadFileResponse = uploadFile(imageFile, uploadUrl);
+        HttpResponse uploadFileResponse = doUploadFile(imageFile, uploadUrl);
         log.info("upload put response status: " + uploadFileResponse.getStatusLine().getStatusCode());
 
-        // Get text contained in the image
-        TextFromImage.Output textFromImageOutput = pullTextFromImage(bucket, key);
-        log.info("image text: " + textFromImageOutput.getText().replaceAll("\\n", " "));
-
-        // Get entities for text
-        EntitiesFromText.Output entitiesFromTextOutput = findTextEntities(textFromImageOutput.getText());
-        log.info("entities: " + entitiesFromTextOutput.getText());
+        return uploadUrlOutput;
     }
 
     private SignedUrlForUpload.Output getUploadUrl() throws IOException, ParseException {
@@ -77,7 +123,7 @@ public class MedTextAnalyze {
         return output;
     }
 
-    private HttpResponse uploadFile(final File file, final String url) throws IOException {
+    private HttpResponse doUploadFile(final File file, final String url) throws IOException {
         HttpPut put = new HttpPut(url);
         put.setEntity(new FileEntity(file));
         CloseableHttpResponse response = this.httpClient.execute(put);
@@ -91,6 +137,16 @@ public class MedTextAnalyze {
         CloseableHttpResponse response = this.httpClient.execute(post);
         String responseContent = EntityUtils.toString(response.getEntity());
         TextFromImage.Output output = fromJson(responseContent, TextFromImage.Output.class);
+        return output;
+    }
+
+    private TextFromPdf.Output pullTextFromPdf(final String bucket, final String key) throws IOException {
+        HttpPost post = new HttpPost(PDF_TEXT);
+        String input = toJson(new TextFromPdf.Input(bucket, key));
+        post.setEntity(new StringEntity(input));
+        CloseableHttpResponse response = this.httpClient.execute(post);
+        String responseContent = EntityUtils.toString(response.getEntity());
+        TextFromPdf.Output output = fromJson(responseContent, TextFromPdf.Output.class);
         return output;
     }
 
@@ -126,86 +182,21 @@ public class MedTextAnalyze {
      * @param args program arguments
      */
     public static void main(final String[] args) {
-        CloseableHttpResponse response;
-
-        String uploadFilePath = "fax/image-2.png";
+        String filePath = "fax/image-2.png";
         MedTextAnalyze medText = new MedTextAnalyze();
         try {
-            medText.submitImageAndAnalyze(new File(uploadFilePath));
+            medText.submitImageAndAnalyze(new File(filePath));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        filePath = "fax/test.pdf";
+        try {
+            medText.submitPdfAndAnalyze(new File(filePath));
         } catch (Exception e) {
             e.printStackTrace();
         }
 
         log.info("finished");
     }
-
-//    /**
-//     * Adds AWS Comprehend Medical client to the
-//     * {@link org.springframework.context.ApplicationContext ApplicationContext}.
-//     *
-//     * @return the aws comprehend medical client
-//     */
-//    @Bean
-//    public AWSComprehendMedical comprehendClient() {
-//        return AWSComprehendMedicalClient.builder()
-//          .withCredentials(new DefaultAWSCredentialsProviderChain())
-//          .withRegion(Regions.US_EAST_1).build();
-//    }
-//
-//    /**
-//     * Adds AWS Textract client to the {@link org.springframework.context.ApplicationContext ApplicationContext}.
-//     *
-//     * @return the aws textract client
-//     */
-//    @Bean
-//    public AmazonTextract textractClient() {
-//        String region = config.getRegion();
-//        if (!StringUtils.hasText(region)) {
-//            throw new IllegalStateException("missing aws region");
-//        }
-//        String accessKeyId = config.getAccessKeyId();
-//        String secretAccessKey = config.getSecretAccessKey();
-//        if (StringUtils.hasText(accessKeyId) && StringUtils.hasText(secretAccessKey)) {
-//            AWSCredentials credentials = new BasicAWSCredentials(accessKeyId, secretAccessKey);
-//            return AmazonTextractClientBuilder.standard()
-//              .withCredentials(new AWSStaticCredentialsProvider(credentials))
-//              .withRegion(region).build();
-//        }
-//
-//        return AmazonTextractClientBuilder.standard().withRegion(region).build();
-//    }
-//
-//    /**
-//     * Adds an AWS S3 client to the {@link org.springframework.context.ApplicationContext ApplicationContext}.
-//     *
-//     * @return the aws S3 client
-//     */
-//    @Bean
-//    public AmazonS3 s3Client() {
-//        String region = config.getRegion();
-//        if (!StringUtils.hasText(region)) {
-//            throw new IllegalStateException("missing aws region");
-//        }
-//        String accessKeyId = config.getAccessKeyId();
-//        String secretAccessKey = config.getSecretAccessKey();
-//        if (StringUtils.hasText(accessKeyId) && StringUtils.hasText(secretAccessKey)) {
-//            AWSCredentials credentials = new BasicAWSCredentials(accessKeyId, secretAccessKey);
-//            return AmazonS3ClientBuilder.standard().withCredentials(new AWSStaticCredentialsProvider(credentials))
-//              .withRegion(region).build();
-//        }
-//
-//        return AmazonS3ClientBuilder.standard().withRegion(region).build();
-//    }
-//
-//    /**
-//     * Adds a Jackson {@link com.fasterxml.jackson.databind.ObjectMapper ObjectMapper} to the
-//     * {@link org.springframework.context.ApplicationContext ApplicationContext}.
-//     *
-//     * @return the object mapper
-//     */
-//    @Bean
-//    @Primary
-//    public ObjectMapper objectMapper() {
-//        return new ObjectMapper();
-//    }
 }
